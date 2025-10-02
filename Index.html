@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Porte magique — plateau de cases + retour à la maison</title>
+<style>
+  html,body{margin:0;height:100%;background:#f6f8fb;font-family:system-ui,Arial,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:12px;display:grid;gap:12px}
+
+  /* Top bar */
+  .topbar{display:flex;gap:10px;align-items:center;justify-content:flex-end}
+  .btn{padding:8px 12px;border:0;border-radius:10px;background:#111827;color:#fff;font-weight:700}
+  .vol{display:flex;gap:8px;align-items:center;color:#111827;font-weight:600}
+  input[type="range"]{accent-color:#111827}
+
+  /* Scène */
+  .scene{position:relative;width:100%;aspect-ratio:16/9;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+  .sky{position:absolute;inset:0 0 40% 0;background:#cfe9ff;z-index:0}
+  .grass{position:absolute;inset:60% 0 0 0;background:#c7f3b2;z-index:0}
+  .path{position:absolute;left:0;right:0;bottom:18%;height:22px;background:#9c7b5a22;border-radius:22px;z-index:0}
+
+  /* Maison + enfant visibles */
+  .house{position:absolute; top:14%; right:8%; width:min(300px,30%); aspect-ratio:1.4/1; z-index:8}
+  .house-body{position:absolute; bottom:0; left:0; right:0; height:72%; background:#ffdcb2; border:2px solid #e2c5a4; border-radius:10px}
+  .roof{position:absolute; left:-8%; right:-8%; top:-22%; height:0; border-left:8% solid transparent; border-right:8% solid transparent; border-bottom: 80px solid #ff6b6b}
+  .window{position:absolute; right:12%; top:22%; width:22%; aspect-ratio:1/1; background:#bfe7ff; border:2px solid #9ecfe8; border-radius:6px}
+  #door{position:absolute; left:10%; bottom:8%; width:24%; height:58%; background:#7a4f2b; border-radius:8px; cursor:pointer; box-shadow:inset -4px 0 0 rgba(0,0,0,.12)}
+  #knob{position:absolute; right:10%; top:45%; width:9px; height:9px; background:#e9d8a6; border-radius:50%}
+  .door-press{animation:doorPress .18s ease-out}
+  @keyframes doorPress{0%{transform:scale(1)}50%{transform:scale(.96)}100%{transform:scale(1)}}
+
+  .child{position:absolute; left:36%; bottom:18%; width:20%; aspect-ratio:1/2; z-index:9}
+  .head{position:absolute; width:40%; aspect-ratio:1/1; left:30%; top:0; background:#f6cc9b; border-radius:50%}
+  .body{position:absolute; width:60%; height:42%; left:20%; top:40%; background:#4da3ff; border-radius:8px}
+  .leg{position:absolute; width:22%; height:28%; bottom:0; background:#2f4858; border-radius:6px}
+  .leg.left{left:22%}.leg.right{right:22%}
+  .arm{position:absolute; width:30%; height:10%; left:-10%; top:46%; background:#f6cc9b; border-radius:999px; transform-origin:left center}
+  .arm.poke{animation:poke .42s ease-out}
+  @keyframes poke{0%{transform:rotate(0)}40%{transform:rotate(-25deg) translateX(2px)}100%{transform:rotate(0)}}
+
+  /* Sticker qui traverse la scène */
+  .sticker{
+    position:absolute; left:0; top:0;
+    width:120px; height:120px; display:grid; place-items:center;
+    border-radius:50%; background:#fff; box-shadow:0 6px 16px rgba(0,0,0,.18);
+    will-change:transform; z-index:10; pointer-events:none;
+  }
+  .sticker .emo{ font-size:72px; line-height:1 }
+
+  /* Légende */
+  .caption{margin-top:4px;text-align:center;font-weight:800;color:#111827}
+
+  /* Plateau de cases */
+  .tray{
+    background:#fff; border-radius:14px; box-shadow:0 8px 20px rgba(0,0,0,.08);
+    padding:10px;
+  }
+  .grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(76px,1fr)); gap:10px;
+  }
+  .cell{
+    position:relative; border:2px dashed #d1d5db; border-radius:12px; min-height:76px;
+    display:grid; place-items:center; background:#fafafa;
+  }
+  .cell-btn{
+    width:70px; height:70px; border-radius:50%; border:0; cursor:pointer;
+    display:grid; place-items:center; background:#fff; box-shadow:0 6px 16px rgba(0,0,0,.16);
+    transition:transform .12s ease; user-select:none;
+  }
+  .cell-btn:active{ transform:scale(.96) }
+  .cell-btn .emo{ font-size:44px; line-height:1 }
+  .cell .label{position:absolute; bottom:4px; left:6px; right:6px; font-size:.75rem; text-align:center; color:#374151; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .hint{ text-align:center; color:#4b5563 }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <button class="btn" id="muteBtn" aria-pressed="false">🔊 Son</button>
+    <label class="vol">Vol
+      <input id="vol" type="range" min="0" max="1" step="0.01" value="0.85">
+    </label>
+  </div>
+
+  <div class="scene" id="scene" aria-label="Maison avec porte cliquable">
+    <div class="sky"></div>
+    <div class="grass"></div>
+    <div class="path"></div>
+
+    <div class="house" id="house">
+      <div class="roof"></div>
+      <div class="house-body"></div>
+      <div class="window"></div>
+      <div id="door" title="Clique la porte"><div id="knob"></div></div>
+      <div class="child">
+        <div class="head"></div>
+        <div class="body"></div>
+        <div class="leg left"></div>
+        <div class="leg right"></div>
+        <div class="arm" id="arm"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption" id="caption">—</div>
+
+  <!-- Plateau de cases -->
+  <div class="tray">
+    <div class="grid" id="grid" aria-label="Plateau des cases"></div>
+  </div>
+
+  <p class="hint">Clique/tape <b>sur la porte</b> pour faire sortir. Les autocollants se rangent en bas.  
+  <b>Astuce :</b> touche une case pour faire <i>revenir</i> l’autocollant à la maison 🏠.</p>
+</div>
+
+<script>
+(() => {
+  /* ==== Séquence (même qu’avant + personnes) ==== */
+  const ITEMS = [
+    { nom:'Chat',        emoji:'🐱', s:'meow',    scale:1.00, speed:1.00 },
+    { nom:'Chien',       emoji:'🐶', s:'woof',    scale:1.00, speed:0.95 },
+    { nom:'Gazelle',     emoji:'🦌', s:'clop',    scale:1.00, speed:1.15 },
+    { nom:'Lion',        emoji:'🦁', s:'roar',    scale:1.05, speed:0.90 },
+    { nom:'Éléphant',    emoji:'🐘', s:'trumpet', scale:1.20, speed:0.75 },
+    { nom:'Tigre',       emoji:'🐅', s:'tiger',   scale:1.05, speed:1.00 },
+    { nom:'Singe',       emoji:'🐒', s:'monkey',  scale:1.00, speed:1.10 },
+    { nom:'Hippopotame', emoji:'🦛', s:'hippo',   scale:1.20, speed:0.70 },
+    { nom:'Coq',         emoji:'🐓', s:'rooster', scale:0.95, speed:1.10 },
+    { nom:'Oiseau',      emoji:'🐦', s:'bird',    scale:0.90, speed:1.25 },
+    { nom:'Avion',       emoji:'✈️',  s:'plane',   scale:1.00, speed:1.40 },
+    { nom:'Voiture',     emoji:'🚗',  s:'car',     scale:1.00, speed:1.30 },
+    { nom:'Père',        emoji:'👨',  s:'pop',     scale:1.00, speed:1.00 },
+    { nom:'Mère',        emoji:'👩',  s:'pop',     scale:1.00, speed:1.00 },
+    { nom:'Frère',       emoji:'👦',  s:'pop',     scale:0.95, speed:1.05 },
+    { nom:'Sœur',        emoji:'👧',  s:'pop',     scale:0.95, speed:1.05 },
+    { nom:'Grand-père',  emoji:'👴',  s:'pop',     scale:1.00, speed:0.90 },
+    { nom:'Grand-mère',  emoji:'👵',  s:'pop',     scale:1.00, speed:0.90 },
+    { nom:'Maître',      emoji:'👨‍🏫', s:'ding',    scale:1.00, speed:1.00 },
+    { nom:'Maîtresse',   emoji:'👩‍🏫', s:'ding',    scale:1.00, speed:1.00 },
+  ];
+  const DUREE_BASE = 8000;
+
+  /* ==== DOM ==== */
+  const scene   = document.getElementById('scene');
+  const door    = document.getElementById('door');
+  const arm     = document.getElementById('arm');
+  const house   = document.getElementById('house');
+  const caption = document.getElementById('caption');
+  const grid    = document.getElementById('grid');
+  const muteBtn = document.getElementById('muteBtn');
+  const vol     = document.getElementById('vol');
+
+  /* ==== Audio (WebAudio) ==== */
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let ac=null, master=null, muted=false;
+  const ensureAudio=()=>{ if(ac) return; ac=new AudioCtx(); master=ac.createGain(); master.gain.value=parseFloat(vol.value); master.connect(ac.destination); };
+  vol.addEventListener('input', ()=>{ ensureAudio(); master.gain.value = muted ? 0 : parseFloat(vol.value); });
+  muteBtn.addEventListener('click', ()=>{ muted=!muted; muteBtn.textContent = muted ? '🔇 Muet' : '🔊 Son'; if(ac) master.gain.value = muted ? 0 : parseFloat(vol.value); muteBtn.setAttribute('aria-pressed', String(muted)); });
+
+  const env=(node,t0,a=0.01,d=0.08,s=0.7,r=0.2,peak=1)=>{ node.gain.setValueAtTime(0,t0); node.gain.linearRampToValueAtTime(peak,t0+a); node.gain.linearRampToValueAtTime(peak*s,t0+a+d); node.gain.linearRampToValueAtTime(0,t0+a+d+r); };
+  const noiseBuffer=(sec=0.4,amp=0.25)=>{ const n=ac.createBuffer(1,sec*ac.sampleRate,ac.sampleRate), d=n.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*amp*Math.pow(1-i/d.length,1.3); return n; };
+  function play(kind){
+    if (muted) return; ensureAudio(); const t=ac.currentTime;
+    const mkOsc=(type,f)=>{ const o=ac.createOscillator(); o.type=type; o.frequency.setValueAtTime(f,t); return o; };
+    const mkGain=()=>{ const g=ac.createGain(); g.connect(master); return g; };
+
+    if (kind==='meow'){ const g=mkGain(); env(g,t,0.02,0.08,0.6,0.25,0.9); const o1=mkOsc('triangle',600); o1.frequency.exponentialRampToValueAtTime(350,t+0.18); o1.connect(g); o1.start(t); o1.stop(t+0.25); const o2=mkOsc('sine',700); o2.frequency.exponentialRampToValueAtTime(420,t+0.32); o2.connect(g); o2.start(t+0.12); o2.stop(t+0.35); }
+    else if (kind==='woof'){ const g=mkGain(); env(g,t,0.005,0.07,0.4,0.18,0.9); const o=mkOsc('square',140); o.frequency.exponentialRampToValueAtTime(90,t+0.2); o.connect(g); o.start(t); o.stop(t+0.22); const src=ac.createBufferSource(); src.buffer=noiseBuffer(0.2,0.25); const ng=ac.createGain(); ng.gain.value=.25; src.connect(ng); ng.connect(master); src.start(t+0.02); }
+    else if (kind==='clop'){ const g=mkGain(); env(g,t,0.001,0.03,0.2,0.05,0.8); const o=mkOsc('triangle',500); o.frequency.exponentialRampToValueAtTime(800,t+0.05); o.connect(g); o.start(t); o.stop(t+0.08); }
+    else if (kind==='roar' || kind==='tiger'){ const g=mkGain(); env(g,t,0.02,0.2,0.6,0.4,0.8); const base=kind==='tiger'?160:120; const o=mkOsc('sawtooth',base); o.frequency.exponentialRampToValueAtTime(base*0.55,t+0.5); o.connect(g); o.start(t); o.stop(t+0.6); const src=ac.createBufferSource(); src.buffer=noiseBuffer(0.6,0.22); const ng=ac.createGain(); ng.gain.value=.25; src.connect(ng); ng.connect(master); src.start(t); }
+    else if (kind==='hippo'){ const g=mkGain(); env(g,t,0.02,0.2,0.6,0.4,0.8); const o=mkOsc('triangle',80); o.frequency.exponentialRampToValueAtTime(60,t+0.5); o.connect(g); o.start(t); o.stop(t+0.55); }
+    else if (kind==='rooster'){ const g=mkGain(); env(g,t,0.01,0.12,0.4,0.25,0.9); const o1=mkOsc('square',700); o1.frequency.exponentialRampToValueAtTime(500,t+0.2); o1.connect(g); o1.start(t); o1.stop(t+0.22); const o2=mkOsc('square',900); o2.frequency.exponentialRampToValueAtTime(650,t+0.24); o2.connect(g); o2.start(t+0.08); o2.stop(t+0.3); }
+    else if (kind==='bird'){ const g=mkGain(); env(g,t,0.005,0.2,0.5,0.2,0.7); const o=mkOsc('sine',1200); o.frequency.setValueAtTime(1200,t); o.frequency.linearRampToValueAtTime(1500,t+0.05); o.frequency.linearRampToValueAtTime(900,t+0.12); o.connect(g); o.start(t); o.stop(t+0.18); }
+    else if (kind==='plane'){ const src=ac.createBufferSource(); src.buffer=noiseBuffer(0.5,0.18); const f=ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value=400; const g=ac.createGain(); g.gain.value=0.6; src.connect(f); f.connect(g); g.connect(master); src.start(t); }
+    else if (kind==='car'){ const g=mkGain(); env(g,t,0.005,0.2,0.6,0.25,0.8); const o=mkOsc('sawtooth',220); o.frequency.linearRampToValueAtTime(320,t+0.25); o.connect(g); o.start(t); o.stop(t+0.3); }
+    else if (kind==='ding' || kind==='pop'){ const g=mkGain(); env(g,t,0.005,0.1,0.6,0.1,0.8); const o=mkOsc('triangle', kind==='ding'? 880:660); o.connect(g); o.start(t); o.stop(t+0.18); }
+  }
+
+  /* ==== Bézier util ==== */
+  const bezier=(t,P0,P1,P2,P3)=>{const u=1-t,tt=t*t,uu=u*u;return{ x:uu*u*P0.x+3*uu*t*P1.x+3*u*tt*P2.x+tt*t*P3.x, y:uu*u*P0.y+3*uu*t*P1.y+3*u*tt*P2.y+tt*t*P3.y }};
+  let idx=0, flying=[]; let raf=null;
+
+  /* ==== Sortie depuis la porte ==== */
+  function launch(){
+    door.classList.remove('door-press'); void door.offsetWidth; door.classList.add('door-press');
+    arm.classList.remove('poke');        void arm.offsetWidth;  arm.classList.add('poke');
+
+    const cfg = ITEMS[idx % ITEMS.length]; idx++;
+    caption.textContent = `${cfg.emoji} ${cfg.nom}`;
+    play(cfg.s);
+
+    const rs=scene.getBoundingClientRect(), rd=door.getBoundingClientRect();
+    const start={ x:rd.left-rs.left+rd.width/2, y:rd.top-rs.top+rd.height*0.55 };
+    const P0=start, P1={x:start.x-rs.width*0.15,y:start.y+rs.height*0.08},
+          P2={x:rs.width*0.35,y:rs.height*0.78}, P3={x:rs.width*0.08,y:rs.height*0.86};
+
+    const el=document.createElement('div'); el.className='sticker';
+    el.style.width=el.style.height=Math.round(110*(cfg.scale||1))+'px';
+    const span=document.createElement('span'); span.className='emo'; span.textContent=cfg.emoji; el.appendChild(span);
+    scene.appendChild(el);
+    const r=el.getBoundingClientRect(), anchor={x:r.width*0.5,y:r.height*0.8};
+    const startTime=performance.now(), dur=DUREE_BASE/(cfg.speed||1);
+
+    flying.push({el,P0,P1,P2,P3,anchor,startTime,dur,cfg,phase:'out'});
+    if(!raf) raf=requestAnimationFrame(tick);
+  }
+
+  /* ==== Animation frame ==== */
+  function tick(now){
+    let alive=0;
+    for(const a of flying){
+      const u=Math.min(1,(now-a.startTime)/a.dur);
+      const e=a.phase==='out'? (1-Math.pow(1-u,1.5)) : (1-Math.pow(1-u,1.5));
+      const p = a.phase==='out'? bezier(e,a.P0,a.P1,a.P2,a.P3)
+                               : bezier(e,a.Q0,a.Q1,a.Q2,a.Q3); // retour
+
+      a.el.style.transform=`translate3d(${p.x-a.anchor.x}px, ${p.y-a.anchor.y}px, 0)`;
+      if (u>=1){
+        if(a.phase==='out'){ // arrivé => ranger en case
+          a.el.remove();
+          addToTray(a.cfg); // crée une case cliquable
+          a.done=true;
+        } else { // retour fini
+          a.el.remove();
+          a.done=true;
+        }
+      }
+      if(!a.done) alive++;
+    }
+    flying = flying.filter(x=>!x.done);
+    raf = alive>0 ? requestAnimationFrame(tick) : null;
+  }
+
+  /* ==== Plateau : ajouter une case ==== */
+  function addToTray(cfg){
+    const cell=document.createElement('div'); cell.className='cell';
+
+    const btn=document.createElement('button'); btn.className='cell-btn'; btn.title='Revenir à la maison';
+    const span=document.createElement('span'); span.className='emo'; span.textContent=cfg.emoji;
+    btn.appendChild(span);
+    const lab=document.createElement('div'); lab.className='label'; lab.textContent=cfg.nom;
+
+    cell.appendChild(btn); cell.appendChild(lab); grid.appendChild(cell);
+
+    btn.addEventListener('click', ()=> sendBack(cell, cfg));
+  }
+
+  /* ==== Retour à la maison depuis une case ==== */
+  function sendBack(cell, cfg){
+    // position de départ = centre du bouton de la case
+    const rs=scene.getBoundingClientRect();
+    const rb=cell.getBoundingClientRect();
+    const start={ x: rb.left + rb.width/2 - rs.left, y: rb.top + rb.height/2 - rs.top };
+
+    // position d'arrivée = porte
+    const rd=door.getBoundingClientRect();
+    const end={ x: rd.left - rs.left + rd.width/2, y: rd.top - rs.top + rd.height*0.55 };
+
+    // courbe douce (quadratique -> convertie en cubique)
+    const ctrl={ x:(start.x*2+end.x)/3, y:(start.y+end.y*2)/3 - 40 };
+    const Q0=start, Q1=ctrl, Q2=end;
+    // équivalent cubique pour réutiliser bezier() : (Q0, (Q0+2Q1)/3, (Q2+2Q1)/3, Q2)
+    const P1={ x:(Q0.x+2*Q1.x)/3, y:(Q0.y+2*Q1.y)/3 };
+    const P2={ x:(Q2.x+2*Q1.x)/3, y:(Q2.y+2*Q1.y)/3 };
+
+    // sticker volant
+    const el=document.createElement('div'); el.className='sticker';
+    el.style.width=el.style.height='90px';
+    const span=document.createElement('span'); span.className='emo'; span.textContent=cfg.emoji; el.appendChild(span);
+    scene.appendChild(el);
+    const r=el.getBoundingClientRect(), anchor={x:r.width*0.5,y:r.height*0.8};
+
+    // enlève la case
+    cell.remove();
+
+    flying.push({ el, Q0:Q0, Q1:P1, Q2:P2, Q3:Q2, anchor, startTime:performance.now(), dur:700, cfg, phase:'back' });
+    if(!raf) raf=requestAnimationFrame(tick);
+    // petit "ding" à l'arrivée
+    play('ding');
+  }
+
+  /* ==== Interactions ==== */
+  door.addEventListener('click', launch);
+  house.addEventListener('click', e=>{ if(e.target.id!=='door') launch(); });
+})();
+</script>
+</body>
+</html>
